@@ -40,7 +40,6 @@ class Server:
                 while True:
                     data = connection.recv(1024).decode('utf-8')
                     if data.startswith("GETALL"):
-                        print("GETALL called")
                         response = self.handle_getall()
                     elif data.startswith("GET:"):
                         name = data.split(":")[1]
