@@ -31,6 +31,10 @@ class Server:
             "Charlie": "3456789012"
         }
 
+    def close(self):
+        self.sock.close()
+        self.logger.info("Server down.")
+
     def serve(self):
         """Start server to handle GET and GETALL requests"""
         self.sock.listen(1)
