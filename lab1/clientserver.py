@@ -4,11 +4,11 @@ Client and server using classes
 
 import logging
 import socket
-
 import const_cs
 from context import lab_logging
 
 lab_logging.setup(stream_level=logging.INFO)  # init loging channels for the lab
+
 
 # pylint: disable=logging-not-lazy, line-too-long
 
@@ -24,24 +24,44 @@ class Server:
         self.sock.settimeout(3)  # time out in order not to block forever
         self._logger.info("Server bound to socket " + str(self.sock))
 
+        # In-memory telephone directory
+        self.directory = {
+            "Alpha": "1234567890",
+            "Bravo": "2345678901",
+            "Charlie": "3456789012"
+        }
+
     def serve(self):
-        """ Serve echo """
+        """Start server to handle GET and GETALL requests"""
         self.sock.listen(1)
-        while self._serving:  # as long as _serving (checked after connections or socket timeouts)
+        while self._serving:
             try:
-                # pylint: disable=unused-variable
-                (connection, address) = self.sock.accept()  # returns new socket and address of client
-                while True:  # forever
-                    data = connection.recv(1024)  # receive data from client
-                    if not data:
-                        break  # stop if client stopped
-                    connection.send(data + "*".encode('ascii'))  # return sent data plus an "*"
-                connection.close()  # close the connection
+                connection, address = self.sock.accept()
+                while True:
+                    data = connection.recv(1024).decode('utf-8')
+                    if data.startswith("GETALL"):
+                        print("GETALL called")
+                        response = self.handle_getall()
+                    elif data.startswith("GET:"):
+                        name = data.split(":")[1]
+                        response = self.handle_get(name)
+                    else:
+                        response = "ERROR: Invalid command"
+                    connection.send(response.encode('utf-8'))
             except socket.timeout:
-                pass  # ignore timeouts
+                continue
         self.sock.close()
         self._logger.info("Server down.")
 
+    def handle_get(self, name):
+        """Handle GET request to retrieve a specific entry"""
+        return f"{name}:{self.directory.get(name, 'NOT FOUND')}"
+
+    def handle_getall(self):
+        """Handle GETALL request to retrieve all entries"""
+        if not self.directory:
+            return "EMPTY"
+        return ";".join(f"{name}:{number}" for name, number in self.directory.items())
 
 class Client:
     """ The client """
@@ -52,16 +72,21 @@ class Client:
         self.sock.connect((const_cs.HOST, const_cs.PORT))
         self.logger.info("Client connected to socket " + str(self.sock))
 
-    def call(self, msg_in="Hello, world"):
-        """ Call server """
-        self.sock.send(msg_in.encode('ascii'))  # send encoded string as data
-        data = self.sock.recv(1024)  # receive the response
-        msg_out = data.decode('ascii')
-        print(msg_out)  # print the result
-        self.sock.close()  # close the connection
-        self.logger.info("Client down.")
-        return msg_out
+    def get(self, name):
+        """Retrieve a specific entry by name"""
+        self.sock.send(f"GET:{name}".encode('utf-8'))
+        data = self.sock.recv(1024).decode('utf-8')
+        print(data)
+        return data
+
+    def get_all(self):
+        """Retrieve all directory entries"""
+        self.sock.send("GETALL".encode('utf-8'))
+        data = self.sock.recv(1024).decode('utf-8')
+        print(data)
+        return data
 
     def close(self):
-        """ Close socket """
+        """Close the client socket"""
         self.sock.close()
+        self.logger.info("Client down.")
