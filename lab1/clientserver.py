@@ -38,21 +38,34 @@ class Server:
     def serve(self):
         """Start server to handle GET and GETALL requests"""
         self.sock.listen(1)
+        connection = None
         while self._serving:
             try:
                 connection, address = self.sock.accept()
+                self._logger.info(f"Connection accepted from {address}")
                 while True:
-                    data = connection.recv(1024).decode('utf-8')
-                    if data.startswith("GETALL"):
-                        response = self.handle_getall()
-                    elif data.startswith("GET:"):
-                        name = data.split(":")[1]
-                        response = self.handle_get(name)
-                    else:
-                        response = "ERROR: Invalid command"
-                    connection.send(response.encode('utf-8'))
+                    try:
+                        data = connection.recv(1024).decode('utf-8')
+                        if not data:
+                            self._logger.info("Client disconnected")
+                            break  # Client has closed the connection
+                        if data.startswith("GETALL"):
+                            response = self.handle_getall()
+                        elif data.startswith("GET:"):
+                            name = data.split(":")[1]
+                            response = self.handle_get(name)
+                        else:
+                            response = "ERROR: Invalid command"
+                        connection.send(response.encode('utf-8'))
+                    except BrokenPipeError:
+                        self._logger.error("Broken pipe error - client may have disconnected.")
+                        break  # Exit the loop if client has disconnected
             except socket.timeout:
                 continue
+            finally:
+                if connection:
+                    connection.close()  # Ensure connection is closed on exit
+                self._logger.info("Connection timed out.")
         self.sock.close()
         self._logger.info("Server down.")
 
