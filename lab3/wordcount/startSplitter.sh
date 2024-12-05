@@ -1,5 +1,4 @@
 #!/bin/bash
-source ../../venv/bin/activate
 python splitter.py input.txt &
 python mapper.py 1 &
 python mapper.py 2 &

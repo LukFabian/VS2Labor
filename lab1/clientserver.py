@@ -28,7 +28,8 @@ class Server:
         self.directory = {
             "Alpha": "1234567890",
             "Bravo": "2345678901",
-            "Charlie": "3456789012"
+            "Charlie": "3456789012",
+            "Ölaf": "3456789012"
         }
 
     def close(self):

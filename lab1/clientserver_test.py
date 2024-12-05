@@ -12,7 +12,8 @@ class TestServer(clientserver.Server):
         self.directory = {
             "Alpha": "1234567890",
             "Bravo": "2345678901",
-            "Charlie": "3456789012"
+            "Charlie": "3456789012",
+            "Ölaf": "3456789012"
         }
 
 
@@ -53,7 +54,7 @@ class TestClientServer(unittest.TestCase):
     def test_getall_with_entries(self):
         """Test retrieving all entries from the server when there are entries."""
         response = self.client.get_all()
-        expected = "Alpha:1234567890;Bravo:2345678901;Charlie:3456789012"
+        expected = "Alpha:1234567890;Bravo:2345678901;Charlie:3456789012;Ölaf:3456789012"
         self.assertEqual(response, expected)
 
     def test_add_500_entries(self):
@@ -64,7 +65,7 @@ class TestClientServer(unittest.TestCase):
             self.server.directory[name] = phone
 
         # Verify that we indeed have 500 entries, plus the initial three entries
-        self.assertEqual(len(self.server.directory), 503, "The directory should contain 503 entries after adding 500.")
+        self.assertEqual(len(self.server.directory), 504, "The directory should contain 503 entries after adding 500.")
 
         # Confirm entries are correct by sampling a few random entries
         for name, phone in list(self.server.directory.items())[:5]:
@@ -84,7 +85,7 @@ class TestClientServer(unittest.TestCase):
     def test_handle_getall_with_entries(self):
         """Test retrieving all entries using handle_getall when entries are present."""
         response = self.server.handle_getall()
-        expected = "Alpha:1234567890;Bravo:2345678901;Charlie:3456789012"
+        expected = "Alpha:1234567890;Bravo:2345678901;Charlie:3456789012;Ölaf:3456789012"
         self.assertEqual(response, expected, "Expected all directory entries in the specified format.")
 
     def test_handle_getall_empty_directory(self):
