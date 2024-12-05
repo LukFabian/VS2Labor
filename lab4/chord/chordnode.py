@@ -38,6 +38,28 @@ class ChordNode:
 
         self.logger = logging.getLogger("vs2lab.lab4.chordnode.ChordNode")
 
+    def lookup(self, key, original_sender):
+        """
+        Perform a recursive lookup to find the node responsible for the given key.
+        :param key: the key to lookup
+        :return: the node ID responsible for the key
+        """
+        # Determine the successor locally if possible
+        successor = self.local_successor_node(key)
+        if successor == self.node_id:  # This node is responsible
+            return self.node_id
+
+        # Forward the lookup request to the responsible node
+        self.logger.info(f"Node {self.node_id} forwarding LOOKUP {key} to {successor}")
+        self.channel.send_to([str(successor)], (constChord.LOOKUP_REQ, key, original_sender))
+
+        # Wait for the response
+        while True:
+            message = self.channel.receive_from_any()
+            sender, response = message
+            if response[0] == constChord.LOOKUP_REP and response[1] == key:
+                return response[1]  # Return the found node ID
+
     def in_between(self, key, lower_bound, upper_bound) -> bool:
         """
         Check if key is located in the name range between two given nodes considering the ring topology
@@ -149,14 +171,18 @@ class ChordNode:
             if request[0] == constChord.LOOKUP_REQ:  # A lookup request
                 self.logger.info("Node {:04n} received LOOKUP {:04n} from {:04n}."
                                  .format(self.node_id, int(request[1]), int(sender)))
+                self.logger.info("Looking for node {}, self.node_id equals {}.".format(request[1], self.node_id))
+                # if self is the node that is searched for, send node key
+                if int(request[1]) == self.node_id:
+                    self.channel.send_to([request[2]], (constChord.LOOKUP_REP, request[1]))
+                else:
+                    # recursive lookup if node is not locally found
+                    self.logger.info("Sending recursive lookup request")
+                    next_id = self.lookup(request[1], request[2])
 
-                # look up and return local successor 
-                next_id: int = self.local_successor_node(request[1])
-                self.channel.send_to([sender], (constChord.LOOKUP_REP, next_id))
-
-                # Finally do a sanity check
-                if not self.channel.exists(next_id):  # probe for existence
-                    self.delete_node(next_id)  # purge disappeared node
+                    # Finally do a sanity check
+                    if not self.channel.exists(next_id):  # probe for existence
+                        self.delete_node(next_id)  # purge disappeared node
 
             elif request[0] == constChord.JOIN:
                 # Join request (the node was already registered above)
