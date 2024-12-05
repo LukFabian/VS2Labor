@@ -19,7 +19,7 @@ lab_logging.setup(stream_level=logging.INFO)
 
 
 class DummyChordClient:
-    """A dummy client for testing the Chord network."""
+    """A dummy client template with the channel boilerplate"""
 
     def __init__(self, channel):
         self.channel = channel
@@ -36,11 +36,11 @@ class DummyChordClient:
             return
 
         # Choose a random key and a random node to start the lookup
-        key = random.randint(0, self.channel.n_bits - 1)
+        key = random.choice(nodes)
         random_node = random.choice(nodes)
 
         print(f"Client: Sending LOOKUP for key {key} to node {random_node}")
-        self.channel.send_to([str(random_node)], (constChord.LOOKUP_REQ, key))
+        self.channel.send_to([str(random_node)], (constChord.LOOKUP_REQ, key, self.node_id))
 
         # Wait for the response
         while True:
@@ -49,6 +49,10 @@ class DummyChordClient:
             if response[0] == constChord.LOOKUP_REP:
                 print(f"Client: Found key {key} at node {response[1]}")
                 break
+        self.channel.send_to(  # a final multicast
+            {i.decode() for i in list(self.channel.channel.smembers('node'))},
+            constChord.STOP)
+
 
 def create_and_run(num_bits, node_class, enter_bar, run_bar):
     """
