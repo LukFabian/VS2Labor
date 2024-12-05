@@ -38,6 +38,28 @@ class ChordNode:
 
         self.logger = logging.getLogger("vs2lab.lab4.chordnode.ChordNode")
 
+    def lookup(self, key):
+        """
+        Perform a recursive lookup to find the node responsible for the given key.
+        :param key: the key to lookup
+        :return: the node ID responsible for the key
+        """
+        # Determine the successor locally if possible
+        successor = self.local_successor_node(key)
+        if successor == self.node_id:  # This node is responsible
+            return self.node_id
+
+        # Forward the lookup request to the responsible node
+        self.logger.info(f"Node {self.node_id} forwarding LOOKUP {key} to {successor}")
+        self.channel.send_to([successor], (constChord.LOOKUP_REQ, key))
+
+        # Wait for the response
+        while True:
+            message = self.channel.receive_from_any()
+            sender, response = message
+            if response[0] == constChord.LOOKUP_REP and response[1] == key:
+                return response[1]  # Return the found node ID
+
     def in_between(self, key, lower_bound, upper_bound) -> bool:
         """
         Check if key is located in the name range between two given nodes considering the ring topology

@@ -10,7 +10,7 @@ Chord Application
 import logging
 import sys
 import multiprocessing as mp
-
+import random
 import chordnode as chord_node
 import constChord
 from context import lab_channel, lab_logging
@@ -19,7 +19,7 @@ lab_logging.setup(stream_level=logging.INFO)
 
 
 class DummyChordClient:
-    """A dummy client template with the channel boilerplate"""
+    """A dummy client for testing the Chord network."""
 
     def __init__(self, channel):
         self.channel = channel
@@ -29,11 +29,26 @@ class DummyChordClient:
         self.channel.bind(self.node_id)
 
     def run(self):
-        print("Implement me pls...")
-        self.channel.send_to(  # a final multicast
-            {i.decode() for i in list(self.channel.channel.smembers('node'))},
-            constChord.STOP)
+        # Get all nodes in the Chord ring
+        nodes = [int(node.decode()) for node in self.channel.channel.smembers('node')]
+        if not nodes:
+            print("No nodes available in the Chord ring.")
+            return
 
+        # Choose a random key and a random node to start the lookup
+        key = random.randint(0, self.channel.n_bits - 1)
+        random_node = random.choice(nodes)
+
+        print(f"Client: Sending LOOKUP for key {key} to node {random_node}")
+        self.channel.send_to([str(random_node)], (constChord.LOOKUP_REQ, key))
+
+        # Wait for the response
+        while True:
+            message = self.channel.receive_from_any()
+            sender, response = message
+            if response[0] == constChord.LOOKUP_REP:
+                print(f"Client: Found key {key} at node {response[1]}")
+                break
 
 def create_and_run(num_bits, node_class, enter_bar, run_bar):
     """
