@@ -1,3 +1,5 @@
 ENTER = '1'
 ALLOW = '2'
 RELEASE = '3'
+CHECK = '4'
+ACK = '5'
