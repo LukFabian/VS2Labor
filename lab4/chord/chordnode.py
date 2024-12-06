@@ -177,6 +177,9 @@ class ChordNode:
                     # recursive lookup if node is not locally found
                     self.logger.info("Sending recursive lookup request")
                     self.lookup(request[1], request[2])
+                    # Finally do a sanity check
+                    if not self.channel.exists(request[1]):  # probe for existence
+                        self.delete_node(request[1])  # purge disappeared node
 
             elif request[0] == constChord.JOIN:
                 # Join request (the node was already registered above)
