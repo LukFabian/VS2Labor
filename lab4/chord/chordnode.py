@@ -53,12 +53,10 @@ class ChordNode:
         self.logger.info(f"Node {self.node_id} forwarding LOOKUP {key} to {successor}")
         self.channel.send_to([str(successor)], (constChord.LOOKUP_REQ, key, original_sender))
 
-        # Wait for the response
-        while True:
-            message = self.channel.receive_from_any()
-            sender, response = message
-            if response[0] == constChord.LOOKUP_REP and response[1] == key:
-                return response[1]  # Return the found node ID
+        message = self.channel.receive_from_any()
+        sender, response = message
+        if response[0] == constChord.LOOKUP_REP and response[1] == key:
+            return response[1]  # Return the found node ID
 
     def in_between(self, key, lower_bound, upper_bound) -> bool:
         """
@@ -178,11 +176,7 @@ class ChordNode:
                 else:
                     # recursive lookup if node is not locally found
                     self.logger.info("Sending recursive lookup request")
-                    next_id = self.lookup(request[1], request[2])
-
-                    # Finally do a sanity check
-                    if not self.channel.exists(next_id):  # probe for existence
-                        self.delete_node(next_id)  # purge disappeared node
+                    self.lookup(request[1], request[2])
 
             elif request[0] == constChord.JOIN:
                 # Join request (the node was already registered above)
