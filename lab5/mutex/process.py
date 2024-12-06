@@ -49,7 +49,7 @@ class Process:
 
     def __cleanup_queue(self):
         if len(self.queue) > 0:
-            #self.queue.sort(key = lambda tup: tup[0])
+            # self.queue.sort(key = lambda tup: tup[0])
             self.queue.sort()
             # There should never be old ALLOW messages at the head of the queue
             while self.queue[0][2] == ALLOW:
@@ -82,7 +82,7 @@ class Process:
         self.channel.send_to(self.other_processes, msg)
 
     def __allowed_to_enter(self):
-         # See who has sent a message (the set will hold at most one element per sender)
+        # See who has sent a message (the set will hold at most one element per sender)
         processes_with_later_message = set([req[1] for req in self.queue[1:]])
         # Access granted if this process is first in queue and all others have answered (logically) later
         first_in_queue = self.queue[0][1] == self.process_id
@@ -90,8 +90,8 @@ class Process:
         return first_in_queue and all_have_answered
 
     def __receive(self):
-         # Pick up any message
-        _receive = self.channel.receive_from(self.other_processes, 10) 
+        # Pick up any message
+        _receive = self.channel.receive_from(self.other_processes, 10)
         if _receive:
             msg = _receive[1]
 
@@ -112,11 +112,12 @@ class Process:
                 self.queue.append(msg)  # Append an ALLOW
             elif msg[2] == RELEASE:
                 # assure release requester indeed has access (his ENTER is first in queue)
-                assert self.queue[0][1] == msg[1] and self.queue[0][2] == ENTER, 'State error: inconsistent remote RELEASE'
+                assert self.queue[0][1] == msg[1] and self.queue[0][
+                    2] == ENTER, 'State error: inconsistent remote RELEASE'
                 del (self.queue[0])  # Just remove first message
 
             self.__cleanup_queue()  # Finally sort and cleanup the queue
-        else:        
+        else:
             self.logger.warning("{} timed out on RECEIVE.".format(self.__mapid()))
 
     def init(self):
@@ -139,7 +140,7 @@ class Process:
             if len(self.all_processes) > 1 and \
                     random.choice([True, False]):
                 self.logger.debug("{} wants to ENTER CS at CLOCK {}."
-                    .format(self.__mapid(), self.clock))
+                                  .format(self.__mapid(), self.clock))
 
                 self.__request_to_enter()
                 while not self.__allowed_to_enter():
@@ -148,9 +149,9 @@ class Process:
                 # Stay in CS for some time ...
                 sleep_time = random.randint(0, 2000)
                 self.logger.debug("{} enters CS for {} milliseconds."
-                    .format(self.__mapid(), sleep_time))
+                                  .format(self.__mapid(), sleep_time))
                 print(" CS <- {}".format(self.__mapid()))
-                time.sleep(sleep_time/1000)
+                time.sleep(sleep_time / 1000)
 
                 # ... then leave CS
                 print(" CS -> {}".format(self.__mapid()))

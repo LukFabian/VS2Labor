@@ -8,7 +8,7 @@ Application with a critical section (CS)
 """
 
 import sys
-import time 
+import time
 import logging
 import random
 import multiprocessing as mp
@@ -71,7 +71,7 @@ if __name__ == "__main__":  # if script is started from command line
     time.sleep(10)
     proc_id = random.randint(0, len(children) - 1)
     proc_to_crash = children[proc_id]
-    del(children[proc_id])    
+    del (children[proc_id])
 
     proc_to_crash.terminate()
     proc_to_crash.join()
