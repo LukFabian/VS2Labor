@@ -1,7 +1,6 @@
 import os
 import sys
 
-
 def add_parent_path(steps_up=2):
     # construct path by stepping up the path hierarchy <steps_up> times
     path = os.path.dirname(__file__)
