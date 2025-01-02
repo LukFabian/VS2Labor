@@ -8,7 +8,7 @@ from const2PC import VOTE_REQUEST, GLOBAL_COMMIT, GLOBAL_ABORT
 # participant messages
 from const2PC import VOTE_COMMIT, VOTE_ABORT
 # misc constants
-from const2PC import TIMEOUT
+from const2PC import TIMEOUT, PREPARE_COMMIT, READY_COMMIT
 
 
 class Coordinator:
@@ -70,9 +70,26 @@ class Coordinator:
                 yet_to_receive.remove(msg[0])
 
         # all participants have locally committed
-        self._enter_state('COMMIT')
+        self._enter_state('PRECOMMIT')
 
         # Inform all participants about global commit
+        self.channel.send_to(self.participants, PREPARE_COMMIT)
+
+        amount_participants_to_answer = len(self.participants)
+        while amount_participants_to_answer > 0:
+            msg = self.channel.receive_from(self.participants, TIMEOUT * 3)
+
+            if (not msg) or (msg[1] == VOTE_ABORT):
+                reason = "timeout" if not msg else "local_abort from " + msg[0]
+                self._enter_state('ABORT')
+                # Inform all participants about global abort
+                self.channel.send_to(self.participants, GLOBAL_ABORT)
+                return "Coordinator {} terminated in state ABORT. Reason: {}."\
+                    .format(self.coordinator, reason)
+            elif msg[1] == READY_COMMIT:
+                amount_participants_to_answer -= 1
+        self._enter_state('COMMIT')
         self.channel.send_to(self.participants, GLOBAL_COMMIT)
+
         return "Coordinator {} terminated in state COMMIT."\
             .format(self.coordinator)

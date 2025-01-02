@@ -3,8 +3,8 @@ import logging
 
 # coordinator messages
 from const2PC import VOTE_REQUEST, GLOBAL_COMMIT, GLOBAL_ABORT
-# participant decissions
-from const2PC import LOCAL_SUCCESS, LOCAL_ABORT
+# participant decisions
+from const2PC import LOCAL_SUCCESS, LOCAL_ABORT, PREPARE_COMMIT, READY_COMMIT
 # participant messages
 from const2PC import VOTE_COMMIT, VOTE_ABORT, NEED_DECISION
 # misc constants
@@ -74,6 +74,16 @@ class Participant:
                 assert decision == LOCAL_SUCCESS
                 self._enter_state('READY')
 
+                pre_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
+                if not pre_commit_message or pre_commit_message[1] == GLOBAL_ABORT:
+                    self._enter_state('ABORT')
+                elif pre_commit_message[1] == PREPARE_COMMIT:
+                    self._enter_state('PRECOMMIT')
+                    self.channel.send_to(self.coordinator, READY_COMMIT)
+                    global_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
+                    if global_commit_message[1] == GLOBAL_COMMIT:
+                        self._enter_state('COMMIT')
+
                 # Notify coordinator about local commit vote
                 self.channel.send_to(self.coordinator, VOTE_COMMIT)
 
@@ -98,11 +108,17 @@ class Participant:
         # Change local state based on the outcome of the joint commit protocol
         # Note: If the protocol has blocked due to coordinator crash,
         # we will never reach this point
-        if decision == GLOBAL_COMMIT:
-            self._enter_state('COMMIT')
+        if decision == PREPARE_COMMIT:
+            self._enter_state('PRECOMMIT')
+            self.channel.send_to(self.coordinator, READY_COMMIT)
         else:
+            self.logger.info(f"DECISION: {decision}")
             assert decision in [GLOBAL_ABORT, LOCAL_ABORT]
             self._enter_state('ABORT')
+
+        msg = self.channel.receive_from(self.coordinator, TIMEOUT)
+        if msg[1] == GLOBAL_COMMIT:
+            self._enter_state('COMMIT')
 
         # Help any other participant when coordinator crashed
         num_of_others = len(self.all_participants) - 1
