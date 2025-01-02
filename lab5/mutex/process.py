@@ -1,8 +1,9 @@
+import datetime
 import logging
 import random
 import time
 
-from constMutex import ENTER, RELEASE, ALLOW, ACTIVE
+from constMutex import ENTER, RELEASE, ALLOW, ACTIVE, ALIVE
 
 
 class Process:
@@ -40,7 +41,7 @@ class Process:
         self.channel = chan  # Create ref to actual channel
         self.process_id = self.channel.join('proc')  # Find out who you are
         self.all_processes: list = []  # All procs in the proc group
-        self.other_processes: list = []  # Needed to multicast to others
+        self.other_processes: dict = {}  # Needed to multicast to others
         self.queue = []  # The request queue list
         self.clock = 0  # The current logical clock
         self.peer_name = 'unassigned'  # The original peer name
@@ -68,7 +69,7 @@ class Process:
         request_msg = (self.clock, self.process_id, ENTER)
         self.queue.append(request_msg)  # Append request to queue
         self.__cleanup_queue()  # Sort the queue
-        self.channel.send_to(self.other_processes, request_msg)  # Send request
+        self.channel.send_to(self.other_processes.keys(), request_msg)  # Send request
 
     def __allow_to_enter(self, requester):
         self.clock = self.clock + 1  # Increment clock value
@@ -85,7 +86,7 @@ class Process:
         self.clock = self.clock + 1  # Increment clock value
         msg = (self.clock, self.process_id, RELEASE)
         # Multicast release notification
-        self.channel.send_to(self.other_processes, msg)
+        self.channel.send_to(self.other_processes.keys(), msg)
 
     def __allowed_to_enter(self):
         # See who has sent a message (the set will hold at most one element per sender)
@@ -98,7 +99,7 @@ class Process:
 
     def __receive(self):
         # Pick up any message
-        _receive = self.channel.receive_from(self.other_processes, 3)
+        _receive = self.channel.receive_from(self.other_processes.keys(), 3)
         if _receive:
             msg = _receive[1]
 
@@ -117,6 +118,8 @@ class Process:
                 self.__allow_to_enter(msg[1])
             elif msg[2] == ALLOW:
                 self.queue.append(msg)  # Append an ALLOW
+            elif msg[2] == ALIVE:
+                self.other_processes.update({msg[1]: datetime.datetime.utcnow()})
             elif msg[2] == RELEASE:
                 # assure release requester indeed has access (his ENTER is first in queue)
                 assert self.queue[0][1] == msg[1] and self.queue[0][2] == ENTER, 'State error: inconsistent remote RELEASE'
@@ -137,9 +140,9 @@ class Process:
         self.all_processes = list(self.channel.subgroup('proc'))
         # sort string elements by numerical order
         self.all_processes.sort(key=lambda x: int(x))
-
-        self.other_processes = list(self.channel.subgroup('proc'))
-        self.other_processes.remove(self.process_id)
+        for process in list(self.channel.subgroup('proc')):
+            self.other_processes.update({process: datetime.datetime.utcnow()})
+        self.other_processes.pop(self.process_id)
 
         self.peer_name = peer_name  # assign peer name
         self.peer_type = peer_type  # assign peer behavior
