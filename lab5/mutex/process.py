@@ -47,6 +47,7 @@ class Process:
         self.peer_name = 'unassigned'  # The original peer name
         self.peer_type = 'unassigned'  # A flag indicating behavior pattern
         self.logger = logging.getLogger("vs2lab.lab5.mutex.process.Process")
+        self.last_sent_alive_signal = datetime.datetime.utcnow()
 
     def __mapid(self, id='-1'):
         # format channel member address
@@ -99,7 +100,7 @@ class Process:
 
     def __receive(self):
         # Pick up any message
-        _receive = self.channel.receive_from(self.other_processes.keys(), 3)
+        _receive = self.channel.receive_from(list(self.other_processes.keys()), 3)
         if _receive:
             msg = _receive[1]
 
@@ -120,6 +121,7 @@ class Process:
                 self.queue.append(msg)  # Append an ALLOW
             elif msg[2] == ALIVE:
                 self.other_processes.update({msg[1]: datetime.datetime.utcnow()})
+                self.logger.info(f"{self.process_id} has received an ALIVE signal from {msg[1]}")
             elif msg[2] == RELEASE:
                 # assure release requester indeed has access (his ENTER is first in queue)
                 assert self.queue[0][1] == msg[1] and self.queue[0][2] == ENTER, 'State error: inconsistent remote RELEASE'
@@ -133,6 +135,25 @@ class Process:
                                         'Clock '+str(msg[0]),
                                         self.__mapid(msg[1]),
                                         msg[2]), self.queue))))
+            utc_now = datetime.datetime.utcnow()
+            ten_seconds_ago = utc_now - datetime.timedelta(seconds=10)
+            fifteen_seconds_ago = ten_seconds_ago - datetime.timedelta(seconds=5)
+            if ten_seconds_ago > self.last_sent_alive_signal:
+                self.clock = self.clock + 1  # Increment clock value
+                request_msg = (self.clock, self.process_id, ALIVE)
+                self.channel.send_to(self.other_processes.keys(), request_msg)
+                self.last_sent_alive_signal = utc_now
+            else:
+                processes_to_remove = list()
+                for process in self.other_processes.keys():
+                    # if process did not send an ALIVE signal in the last 10 seconds
+                    if fifteen_seconds_ago > self.other_processes.get(process):
+                        processes_to_remove.append(process)
+                self.logger.info(f"process {self.process_id} is removing the following stale processes: {processes_to_remove} from its process list")
+                for process in processes_to_remove:
+                    self.other_processes.pop(process)
+                    self.all_processes.remove(process)
+                    self.queue = [queue_element for queue_element in self.queue if str(queue_element[1]).removeprefix("Proc-") not in processes_to_remove]
 
     def init(self, peer_name, peer_type):
         self.channel.bind(self.process_id)
