@@ -58,7 +58,7 @@ class Coordinator:
             msg = self.channel.receive_from(self.participants, TIMEOUT)
 
             if (not msg) or (msg[1] == VOTE_ABORT):
-                reason = "timeout" if not msg else "local_abort from " + msg[0]
+                reason = "timeout on state WAIT" if not msg else "local_abort from " + msg[0]
                 self._enter_state('ABORT')
                 # Inform all participants about global abort
                 self.channel.send_to(self.participants, GLOBAL_ABORT)
@@ -69,7 +69,6 @@ class Coordinator:
                 assert msg[1] == VOTE_COMMIT
                 yet_to_receive.remove(msg[0])
 
-        # all participants have locally committed
         self._enter_state('PRECOMMIT')
 
         # Inform all participants about global commit
@@ -80,7 +79,7 @@ class Coordinator:
             msg = self.channel.receive_from(self.participants, TIMEOUT * 3)
 
             if (not msg) or (msg[1] == VOTE_ABORT):
-                reason = "timeout" if not msg else "local_abort from " + msg[0]
+                reason = "timeout on state PRECOMMIT" if not msg else "local_abort from " + msg[0]
                 self._enter_state('ABORT')
                 # Inform all participants about global abort
                 self.channel.send_to(self.participants, GLOBAL_ABORT)

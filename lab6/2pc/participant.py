@@ -35,7 +35,7 @@ class Participant:
     @staticmethod
     def _do_work():
         # Simulate local activities that may succeed or not
-        return LOCAL_ABORT if random.random() > 2/3 else LOCAL_SUCCESS
+        return LOCAL_ABORT if random.random() > 2 / 3 else LOCAL_SUCCESS
 
     def _enter_state(self, state):
         self.stable_log.info(state)  # Write to recoverable persistant log file
@@ -72,6 +72,7 @@ class Participant:
             # we are ready to proceed the joint commit
             else:
                 assert decision == LOCAL_SUCCESS
+                self.channel.send_to(self.coordinator, VOTE_COMMIT)
                 self._enter_state('READY')
 
                 pre_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
@@ -80,45 +81,9 @@ class Participant:
                 elif pre_commit_message[1] == PREPARE_COMMIT:
                     self._enter_state('PRECOMMIT')
                     self.channel.send_to(self.coordinator, READY_COMMIT)
-                    global_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
-                    if global_commit_message[1] == GLOBAL_COMMIT:
+                    decision = self.channel.receive_from(self.coordinator, TIMEOUT)[1]
+                    if decision == GLOBAL_COMMIT:
                         self._enter_state('COMMIT')
-
-                # Notify coordinator about local commit vote
-                self.channel.send_to(self.coordinator, VOTE_COMMIT)
-
-                # Wait for coordinator to notify the final outcome
-                msg = self.channel.receive_from(self.coordinator, TIMEOUT)
-
-                if not msg:  # Crashed coordinator
-                    # Ask all processes for their decisions
-                    self.channel.send_to(self.all_participants, NEED_DECISION)
-                    while True:
-                        msg = self.channel.receive_from_any()
-                        # If someone reports a final decision,
-                        # we locally adjust to it
-                        if msg[1] in [
-                                GLOBAL_COMMIT, GLOBAL_ABORT, LOCAL_ABORT]:
-                            decision = msg[1]
-                            break
-
-                else:  # Coordinator came to a decision
-                    decision = msg[1]
-
-        # Change local state based on the outcome of the joint commit protocol
-        # Note: If the protocol has blocked due to coordinator crash,
-        # we will never reach this point
-        if decision == PREPARE_COMMIT:
-            self._enter_state('PRECOMMIT')
-            self.channel.send_to(self.coordinator, READY_COMMIT)
-        else:
-            self.logger.info(f"DECISION: {decision}")
-            assert decision in [GLOBAL_ABORT, LOCAL_ABORT]
-            self._enter_state('ABORT')
-
-        msg = self.channel.receive_from(self.coordinator, TIMEOUT)
-        if msg[1] == GLOBAL_COMMIT:
-            self._enter_state('COMMIT')
 
         # Help any other participant when coordinator crashed
         num_of_others = len(self.all_participants) - 1
