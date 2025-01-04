@@ -29,7 +29,7 @@ class Participant:
             "participant-" + self.participant)
         self.logger = logging.getLogger("vs2lab.lab6.2pc.Participant")
         self.coordinator = {}
-        self.all_participants = {}
+        self.all_participants = set()
         self.state = 'NEW'
 
     @staticmethod
@@ -49,31 +49,11 @@ class Participant:
         self.all_participants = self.channel.subgroup('participant')
         self._enter_state('INIT')  # Start in local INIT state.
 
-    def appoint_new_coordinator(self):
-        self.logger.info(
-            f"participant {self.participant} in state {self.state}: coordinator crashed, trying to appoint new coordinator")
-        # Ask all processes for their decisions
-        self.channel.send_to(self.all_participants, NEW_COORDINATOR)
-        num_of_others = len(self.all_participants) - 1
-        process_did_vote = True
-        while num_of_others > 0:
-            num_of_others -= 1
-            msg = self.channel.receive_from(self.all_participants, TIMEOUT * 2)
-            if msg and msg[1] == NEW_COORDINATOR:
-                pass
-            else:
-                process_did_vote = False
-        if process_did_vote:
-            smallest_process_id = min(self.all_participants)
-            smallest_process_id = min(smallest_process_id, self.participant)
-            self.logger.info(
-                f"participant {self.participant} in state {self.state}: replacing crashed coordinator {self.coordinator} with {smallest_process_id}")
-            self.all_participants.pop(smallest_process_id)
-            self.coordinator = {str(smallest_process_id)}
-
     def run(self):
         # Wait for start of joint commit
-        msg = self.channel.receive_from(self.coordinator, TIMEOUT)
+        msg = self.channel.receive_from(self.coordinator, TIMEOUT * 2)
+        smallest_process_id = min([int(participant) for participant in self.all_participants])
+        smallest_process_id = min(smallest_process_id, int(self.participant))
 
         if not msg:  # Crashed coordinator - give up entirely
             # decide to locally abort (before doing anything)
@@ -89,71 +69,83 @@ class Participant:
             # If local decision is negative,
             # then vote for abort and quit directly
             if decision == LOCAL_ABORT:
+                self.logger.info(f"participant {self.participant} in state {self.state}: local decision is negative")
                 self.channel.send_to(self.coordinator, VOTE_ABORT)
+                self._enter_state('ABORT')
 
             # If local decision is positive,
             # we are ready to proceed the joint commit
             else:
                 assert decision == LOCAL_SUCCESS
-                self.channel.send_to(self.coordinator, VOTE_COMMIT)
                 self._enter_state('READY')
+                self.channel.send_to(self.coordinator, VOTE_COMMIT)
 
-                pre_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
-                if not pre_commit_message or pre_commit_message[1] == GLOBAL_ABORT:
+            pre_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
+            if not pre_commit_message:
+                self.logger.info(
+                    f"participant {self.participant} in state {self.state}: replacing crashed coordinator {self.coordinator} with {smallest_process_id}")
+                self.all_participants.remove(str(smallest_process_id))
+                self.coordinator = {str(smallest_process_id)}
+                if str(smallest_process_id) == self.participant:
                     self.logger.info(
-                        f"participant {self.participant} in state {self.state}: switching to state ABORT as the coordinator is not responding to VOTE_COMMIT message")
-                    self._enter_state('ABORT')
-                elif pre_commit_message[1] == PREPARE_COMMIT:
-                    self._enter_state('PRECOMMIT')
-                    self.channel.send_to(self.coordinator, READY_COMMIT)
-                    decision = self.channel.receive_from(self.coordinator, TIMEOUT)[1]
-                    if decision == GLOBAL_COMMIT:
-                        self._enter_state('COMMIT')
+                        f"participant {self.participant} in state {self.state}: is new coordinator")
+                    if self.state == 'READY':
+                        self.channel.send_to(self.all_participants, VOTE_REQUEST)
+                        # Collect votes from all participants
+                        yet_to_receive = list(self.all_participants)
+                        while len(yet_to_receive) > 0:
+                            msg = self.channel.receive_from(self.all_participants, TIMEOUT)
 
-        msg = self.channel.receive_from(self.all_participants, TIMEOUT * 2)
-        if msg and msg[1] == NEW_COORDINATOR:
-            smallest_process_id = min(self.all_participants)
-            smallest_process_id = min(smallest_process_id, self.participant)
-            self.logger.info(
-                f"participant {self.participant} in state {self.state}: replacing crashed coordinator {self.coordinator} with {smallest_process_id}")
-            self.all_participants.pop(smallest_process_id)
-            self.coordinator = {smallest_process_id}
-            # if this participant is now the new coordinator
-            if next(iter(self.coordinator)) == self.participant:
-                self.channel.send_to(self.all_participants, (STATE_CHANGE, self.state))
-                num_of_others = len(self.all_participants) - 1
-                participant_states = list()
-                while num_of_others > 0:
-                    num_of_others -= 1
-                    msg = self.channel.receive_from(self.all_participants, TIMEOUT)
-                    if msg and msg[1] in ['INIT', 'READY', 'ABORT', 'PRECOMMIT', 'COMMIT']:
-                        participant_states.append(msg[1])
-                if self.state == 'WAIT' and 'COMMIT' not in participant_states:
-                    self._enter_state('ABORT')
-                    self.channel.send_to(self.all_participants, GLOBAL_ABORT)
-                elif self.state == 'PRECOMMIT' and ['ABORT', 'INIT'] not in participant_states:
-                    self._enter_state('COMMIT')
-                    self.channel.send_to(self.all_participants, GLOBAL_COMMIT)
-            else:
-                msg = self.channel.receive_from(self.coordinator, TIMEOUT)
-                if msg and msg[1][0] == STATE_CHANGE:
-                    coordinator_state = msg[1][1]
-                    if coordinator_state == 'WAIT' and self.state in ['INIT', 'WAIT']:
-                        self._enter_state(coordinator_state)
-                    elif coordinator_state == 'PRECOMMIT' and self.state in ['INIT', 'WAIT', 'PRECOMMIT']:
-                        self._enter_state(coordinator_state)
-                    elif self.state in ['INIT', 'WAIT', 'PRECOMMIT']:
-                        self._enter_state(coordinator_state)
-                    elif coordinator_state in ['COMMIT', 'ABORT']:
-                        self._enter_state(coordinator_state)
-                    self.channel.send_to(self.coordinator, self.state)
-                    msg = self.channel.receive_from(self.coordinator, TIMEOUT)
-                    if msg and msg[1] == GLOBAL_ABORT:
-                        decision = GLOBAL_ABORT
-                        self._enter_state('ABORT')
-                    elif msg and msg[1] == GLOBAL_COMMIT:
-                        decision = GLOBAL_COMMIT
+                            if (not msg) or (msg[1] == VOTE_ABORT):
+                                reason = "timeout on state WAIT" if not msg else "local_abort from " + msg[0]
+                                self._enter_state('ABORT')
+                                # Inform all participants about global abort
+                                self.channel.send_to(self.all_participants, GLOBAL_ABORT)
+                                return "New Coordinator {} terminated in state ABORT. Reason: {}." \
+                                    .format(self.coordinator, reason)
+                            else:
+                                assert msg[1] == VOTE_COMMIT
+                                yet_to_receive.remove(msg[0])
                         self._enter_state('COMMIT')
+                        decision = GLOBAL_COMMIT
+                        self.channel.send_to(self.all_participants, GLOBAL_COMMIT)
+                    elif self.state == 'PRECOMMIT':
+                        self._enter_state('COMMIT')
+                        decision = GLOBAL_COMMIT
+                        self.channel.send_to(self.all_participants, GLOBAL_COMMIT)
+                    elif self.state == 'ABORT':
+                        self.channel.send_to(self.all_participants, GLOBAL_ABORT)
+            elif pre_commit_message[1] == GLOBAL_ABORT:
+                self._enter_state('ABORT')
+            elif pre_commit_message[1] == PREPARE_COMMIT:
+                self._enter_state('PRECOMMIT')
+                self.channel.send_to(self.coordinator, READY_COMMIT)
+                decision = self.channel.receive_from(self.coordinator, TIMEOUT)[1]
+                if decision == GLOBAL_COMMIT:
+                    self._enter_state('COMMIT')
+        if self.participant != str(smallest_process_id):
+            msg = self.channel.receive_from(self.coordinator, TIMEOUT * 2)
+            if msg:
+                self.logger.info(
+                    f"participant {self.participant} in state {self.state}: received {msg[1]} from newly appointed coordinator")
+                if msg[1] == GLOBAL_ABORT:
+                    decision = GLOBAL_ABORT
+                    self._enter_state('ABORT')
+                elif msg[1] == GLOBAL_COMMIT:
+                    decision = GLOBAL_COMMIT
+                    self._enter_state('COMMIT')
+                elif msg[1] == VOTE_REQUEST:
+                    if self.state == 'ABORT':
+                        self.channel.send_to(self.coordinator, VOTE_ABORT)
+                    else:
+                        self.channel.send_to(self.coordinator, VOTE_COMMIT)
+                        msg = self.channel.receive_from(self.coordinator, TIMEOUT)
+                        if msg:
+                            if msg[1] == GLOBAL_COMMIT:
+                                self._enter_state('COMMIT')
+                            elif msg[1] == GLOBAL_ABORT:
+                                self._enter_state('ABORT')
+                            decision = msg[1]
 
         return "Participant {} terminated in state {} due to {}.".format(
             self.participant, self.state, decision)
