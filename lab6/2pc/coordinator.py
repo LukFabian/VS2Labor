@@ -42,21 +42,20 @@ class Coordinator:
         self.participants = self.channel.subgroup('participant')
 
     def run(self):
-        if random.random() > 3/4:  # simulate a crash
-            return "Coordinator crashed in state INIT."
+        #if random.random() > 3/4:  # simulate a crash
+        #    return "Coordinator crashed in state INIT."
 
         # Request local votes from all participants
         self._enter_state('WAIT')
         self.channel.send_to(self.participants, VOTE_REQUEST)
 
-        if random.random() > 2/3:  # simulate a crash
-            return "Coordinator crashed in state WAIT."
+        #if random.random() > 2/3:  # simulate a crash
+        #    return "Coordinator crashed in state WAIT."
 
         # Collect votes from all participants
         yet_to_receive = list(self.participants)
         while len(yet_to_receive) > 0:
             msg = self.channel.receive_from(self.participants, TIMEOUT)
-
             if (not msg) or (msg[1] == VOTE_ABORT):
                 reason = "timeout on state WAIT" if not msg else "local_abort from " + msg[0]
                 self._enter_state('ABORT')
@@ -76,10 +75,13 @@ class Coordinator:
 
         amount_participants_to_answer = len(self.participants)
         while amount_participants_to_answer > 0:
-            msg = self.channel.receive_from(self.participants, TIMEOUT * 3)
-
-            if (not msg) or (msg[1] == VOTE_ABORT):
-                reason = "timeout on state PRECOMMIT" if not msg else "local_abort from " + msg[0]
+            msg = self.channel.receive_from(self.participants, TIMEOUT)
+            if not msg:
+                self._enter_state('COMMIT')
+                self.channel.send_to(self.participants, GLOBAL_COMMIT)
+                return "Coordinator {} terminated in state COMMIT.".format(self.coordinator)
+            elif msg[1] == VOTE_ABORT:
+                reason = "local_abort from " + msg[0]
                 self._enter_state('ABORT')
                 # Inform all participants about global abort
                 self.channel.send_to(self.participants, GLOBAL_ABORT)

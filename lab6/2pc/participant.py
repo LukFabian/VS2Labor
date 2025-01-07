@@ -50,6 +50,12 @@ class Participant:
         self._enter_state('INIT')  # Start in local INIT state.
 
     def run(self):
+        # uncomment me for initial participant crash
+        #highest_process_id = max([int(participant) for participant in self.all_participants])
+        #highest_process_id = max(highest_process_id, int(self.participant))
+        #if str(highest_process_id) == self.participant:
+        #    return f"Participant {self.participant} crashed in state INIT."
+
         # Wait for start of joint commit
         msg = self.channel.receive_from(self.coordinator, TIMEOUT * 2)
         smallest_process_id = min([int(participant) for participant in self.all_participants])
@@ -80,7 +86,13 @@ class Participant:
                 self._enter_state('READY')
                 self.channel.send_to(self.coordinator, VOTE_COMMIT)
 
-            pre_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT)
+                # uncomment me for precommit participant crash
+                #highest_process_id = max([int(participant) for participant in self.all_participants])
+                #highest_process_id = max(highest_process_id, int(self.participant))
+                #if str(highest_process_id) == self.participant:
+                #    return f"Participant {self.participant} crashed in state READY."
+
+            pre_commit_message = self.channel.receive_from(self.coordinator, TIMEOUT * 2)
             if not pre_commit_message:
                 self.logger.info(
                     f"participant {self.participant} in state {self.state}: replacing crashed coordinator {self.coordinator} with {smallest_process_id}")
@@ -115,19 +127,21 @@ class Participant:
                         self.channel.send_to(self.all_participants, GLOBAL_COMMIT)
                     elif self.state == 'ABORT':
                         self.channel.send_to(self.all_participants, GLOBAL_ABORT)
+                        decision = GLOBAL_ABORT
             elif pre_commit_message[1] == GLOBAL_ABORT:
                 self._enter_state('ABORT')
+                decision = GLOBAL_ABORT
             elif pre_commit_message[1] == PREPARE_COMMIT:
                 self._enter_state('PRECOMMIT')
                 self.channel.send_to(self.coordinator, READY_COMMIT)
-                decision = self.channel.receive_from(self.coordinator, TIMEOUT)[1]
+                decision = self.channel.receive_from(self.coordinator, TIMEOUT * 2)[1]
                 if decision == GLOBAL_COMMIT:
                     self._enter_state('COMMIT')
         if self.participant != str(smallest_process_id):
             msg = self.channel.receive_from(self.coordinator, TIMEOUT * 2)
             if msg:
                 self.logger.info(
-                    f"participant {self.participant} in state {self.state}: received {msg[1]} from newly appointed coordinator")
+                    f"participant {self.participant} in state {self.state}: received {msg[1]} from coordinator")
                 if msg[1] == GLOBAL_ABORT:
                     decision = GLOBAL_ABORT
                     self._enter_state('ABORT')
@@ -137,6 +151,7 @@ class Participant:
                 elif msg[1] == VOTE_REQUEST:
                     if self.state == 'ABORT':
                         self.channel.send_to(self.coordinator, VOTE_ABORT)
+                        decision = VOTE_ABORT
                     else:
                         self.channel.send_to(self.coordinator, VOTE_COMMIT)
                         msg = self.channel.receive_from(self.coordinator, TIMEOUT)
