@@ -169,17 +169,16 @@ class ChordNode:
             if request[0] == constChord.LOOKUP_REQ:  # A lookup request
                 self.logger.info("Node {:04n} received LOOKUP {:04n} from {:04n}."
                                  .format(self.node_id, int(request[1]), int(sender)))
-                self.logger.info("Looking for node {}, self.node_id equals {}.".format(request[1], self.node_id))
+                self.logger.info("Looking for key {}, self.node_id equals {}.".format(request[1], self.node_id))
                 # if self is the node that is searched for, send node key
-                if int(request[1]) == self.node_id:
-                    self.channel.send_to([request[2]], (constChord.LOOKUP_REP, request[1]))
+                next_node = self.local_successor_node(request[1])
+                if next_node == self.node_id:
+                    self.channel.send_to([request[2]], (constChord.LOOKUP_REP, request[1], self.node_id))
                 else:
                     # recursive lookup if node is not locally found
                     self.logger.info("Sending recursive lookup request")
-                    self.lookup(request[1], request[2])
-                    # Finally do a sanity check
-                    if not self.channel.exists(request[1]):  # probe for existence
-                        self.delete_node(request[1])  # purge disappeared node
+                    self.channel.send_to([str(next_node)], (constChord.LOOKUP_REQ, request[1], request[2]))
+
 
             elif request[0] == constChord.JOIN:
                 # Join request (the node was already registered above)

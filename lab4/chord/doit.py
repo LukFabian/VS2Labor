@@ -36,7 +36,7 @@ class DummyChordClient:
             return
 
         # Choose a random key and a random node to start the lookup
-        key = random.choice(nodes)
+        key = random.randint(0, self.channel.n_bits - 1)
         random_node = random.choice(nodes)
 
         print(f"Client: Sending LOOKUP for key {key} to node {random_node}")
@@ -47,7 +47,7 @@ class DummyChordClient:
             message = self.channel.receive_from_any()
             sender, response = message
             if response[0] == constChord.LOOKUP_REP:
-                print(f"Client: Found key {key} at node {response[1]}")
+                print(f"Client: Found key {key} at node {response[2]}")
                 break
         self.channel.send_to(  # a final multicast
             {i.decode() for i in list(self.channel.channel.smembers('node'))},

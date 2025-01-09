@@ -73,6 +73,9 @@ class Coordinator:
         # Inform all participants about global commit
         self.channel.send_to(self.participants, PREPARE_COMMIT)
 
+        if random.random() < 1:  # simulate a crash
+            return "Coordinator crashed in state PRECOMMIT."
+
         amount_participants_to_answer = len(self.participants)
         while amount_participants_to_answer > 0:
             msg = self.channel.receive_from(self.participants, TIMEOUT)
